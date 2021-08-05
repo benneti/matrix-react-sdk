@@ -28,6 +28,7 @@ import PlatformPeg from "./PlatformPeg";
 import webpackLangJsonUrl from "$webapp/i18n/languages.json";
 import { SettingLevel } from "./settings/SettingLevel";
 import { retry } from "./utils/promise";
+import { isUndefined } from 'lodash';
 
 const i18nFolder = 'i18n/';
 
@@ -188,22 +189,35 @@ export function substitute(text: string, variables: IVariables, tags: Tags): str
 export function substitute(text: string, variables?: IVariables, tags?: Tags): string | React.ReactNode {
     let result: React.ReactNode | string = text;
 
-    if (variables !== undefined) {
-        const regexpMapping: IVariables = {};
+    const hasVariables = !isUndefined(variables);
+    const hasTags = !isUndefined(tags);
+    const mappingVariables: IVariables = {};
+    /**
+     * All three arguments is a very niche feature in this application, and needs special treatment.
+     * In case where we have both variables and tags we need to run the replacements in one go
+     * otherwise the second replacement may get React.ReactNode as the entry point which entirely
+     * breaks the substitution and returns a simple [object Object] string.
+     * As of writing this comment, the only files using all three arguments are:
+     * AppPermission.tsx
+     * NewRoomIntro.tsx
+     * CapabilityText.tsx
+    */
+    if (hasVariables) {
         for (const variable in variables) {
-            regexpMapping[`%\\(${variable}\\)s`] = variables[variable];
+            mappingVariables[`%\\(${variable}\\)s`] = variables[variable];
         }
-        result = replaceByRegexes(result as string, regexpMapping);
+        // Ignore the first substitution if we have tags in the same call
+        if (!hasTags) {
+            result = replaceByRegexes(result as string, mappingVariables);
+        }
     }
-
-    if (tags !== undefined) {
-        const regexpMapping: Tags = {};
+    if (hasTags) {
+        const regexpMapping: Tags | IVariables = hasVariables ? mappingVariables : {};
         for (const tag in tags) {
             regexpMapping[`(<${tag}>(.*?)<\\/${tag}>|<${tag}>|<${tag}\\s*\\/>)`] = tags[tag];
         }
         result = replaceByRegexes(result as string, regexpMapping);
     }
-
     return result;
 }
 
